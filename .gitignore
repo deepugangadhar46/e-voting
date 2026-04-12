@@ -44,6 +44,7 @@ coverage
 /frontend/dist
 /frontend/build
 
+
 # MongoDB
 *.mongodb
 
@@ -51,3 +52,11 @@ coverage
 /private_keys.txt
 /secrets.json
 /credentials.json
+
+#backend
+/backend/node_modules
+/backend/package-lock.json
+
+#frontend
+/frontend/node_modules
+/frontend/package-lock.json
