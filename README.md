@@ -4,11 +4,11 @@ A secure, transparent, and tamper-proof voting system built on Ethereum blockcha
 
 ## Features
 
-- **Biometric Authentication**: Face recognition with liveness detection (prevents photo spoofing)
+- **Biometric Authentication**: Face recognition with liveness detection (reduces photo spoofing risk)
 - **Blockchain Security**: Votes recorded permanently on Ethereum blockchain
 - **Double-Vote Prevention**: Smart contract enforces one vote per wallet
 - **Transparency**: Real-time results visible to anyone
-- **Privacy**: Face data stored as 128-dimension embeddings (not actual photos)
+- **Privacy**: Face data stored as numerical embeddings instead of raw images
 
 ## Tech Stack
 
@@ -49,6 +49,29 @@ blockchain-voting/
 - MongoDB (local or cloud)
 - MetaMask browser extension
 - Webcam (for face recognition)
+
+## Environment Variables
+
+Create `.env` files in the following locations:
+
+### Root `.env` (for Hardhat - only needed for Sepolia deployment)
+```env
+SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+PRIVATE_KEY=your_wallet_private_key_here
+```
+
+### Backend `.env`
+```env
+MONGODB_URI=mongodb://localhost:27017/voting-system
+PORT=5000
+```
+
+### Frontend `.env.local`
+```env
+VITE_CONTRACT_ADDRESS=0xYourDeployedContractAddress
+```
+
+**⚠️ SECURITY WARNING**: Never commit `.env` files to Git. They are already in `.gitignore`.
 
 ## Quick Start
 
@@ -241,10 +264,46 @@ event VotedEvent(uint256 indexed candidateId, address indexed voter);
 ## Security Features
 
 1. **Double-Vote Prevention**: Smart contract mapping tracks voters
-2. **Liveness Detection**: Requires natural blinks (2 minimum)
-3. **Photo Spoofing Prevention**: EAR-based blink detection
-4. **Blockchain Immutability**: Votes cannot be altered
-5. **Privacy**: Face embeddings stored, not photos
+2. **Liveness Detection**: Basic blink-based verification to reduce photo spoofing risk
+3. **Blockchain Immutability**: Votes cannot be altered
+4. **Privacy**: Face embeddings stored, not photos
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Frontend      │────▶│    Backend      │────▶│    MongoDB      │
+│  (React + Vite) │     │ (Express +      │     │  (Face + User   │
+│                 │     │   face-api.js)  │     │      Data)      │
+└────────┬────────┘     └─────────────────┘     └─────────────────┘
+         │
+         │              ┌─────────────────┐
+         └─────────────▶│  Smart Contract │
+            (Ethers.js) │   (Voting.sol)  │
+                        │                 │
+                        └────────┬────────┘
+                                 │
+                        ┌────────▼────────┐
+                        │  Local Hardhat  │
+                        │   / Sepolia     │
+                        └─────────────────┘
+```
+
+## Limitations
+
+- **Face Recognition Accuracy**: Depends on lighting and camera quality
+- **Liveness Detection**: Basic blink-based system and can be improved with advanced anti-spoofing
+- **Scale**: Currently designed for small-scale elections (classroom, college level)
+- **Dependencies**: Requires internet connection and MetaMask browser extension
+- **Blockchain Costs**: Real deployment requires ETH for gas fees
+- **Hardware Requirements**: Webcam needed for face capture
+
+## Demo Flow
+
+1. **Register**: Voter enters name, ID, connects MetaMask, captures face (2 blinks required)
+2. **Login**: Face verification with liveness detection
+3. **Vote**: Select candidate and confirm with MetaMask transaction
+4. **Results**: View real-time vote counts from blockchain
 
 ## Testing
 
