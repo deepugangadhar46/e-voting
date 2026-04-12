@@ -1,16 +1,24 @@
 {
   "name": "blockchain-voting",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Blockchain-based e-voting system with biometric authentication",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node scripts/start-dev.js",
+    "dev:windows": "powershell -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
+    "setup": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "test": "npx hardhat test",
+    "compile": "npx hardhat compile",
+    "deploy:local": "npx hardhat run scripts/deploy-local.js --network localhost",
+    "clean": "npx hardhat clean && rimraf node_modules backend/node_modules frontend/node_modules"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["blockchain", "voting", "ethereum", "solidity", "face-recognition"],
+  "author": "deepugangadhar46",
   "license": "ISC",
-  "description": "",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "hardhat": "^2.28.6"
+    "hardhat": "^2.28.6",
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0",
+    "cross-env": "^7.0.3"
   }
 }
