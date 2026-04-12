@@ -1,0 +1,84 @@
+.app {
+  min-height: 100vh;
+}
+
+.status-indicators {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+
+.status {
+  padding: 8px 16px;
+  border-radius: 20px;
+  background-color: #e0e0e0;
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.status.active {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.info-box {
+  background-color: #e3f2fd;
+  border-left: 4px solid #2196F3;
+  padding: 16px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+.wallet-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.wallet-info .address {
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.meta-mask-notice {
+  background: #fff3e0;
+  border: 1px solid #ff9800;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.meta-mask-notice h3 {
+  color: #e65100;
+  margin-bottom: 8px;
+}
+
+.meta-mask-notice p {
+  color: #666;
+  margin-bottom: 12px;
+}
