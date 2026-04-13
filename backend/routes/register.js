@@ -13,6 +13,16 @@ router.post('/', async (req, res) => {
         error: 'Missing required fields: name, voterID, walletAddress, faceEmbedding' 
       });
     }
+    
+    // Validate face embedding format
+    if (!Array.isArray(faceEmbedding) || faceEmbedding.length !== 128) {
+      return res.status(400).json({ 
+        error: 'Invalid face embedding. Expected array of 128 numbers.' 
+      });
+    }
+    if (!faceEmbedding.every(n => typeof n === 'number' && !isNaN(n))) {
+      return res.status(400).json({ error: 'Face embedding must contain valid numbers' });
+    }
 
     // Check if voterID already exists
     const existingVoter = await Voter.findOne({ voterID });

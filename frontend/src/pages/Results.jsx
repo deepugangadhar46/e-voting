@@ -165,7 +165,7 @@ const Results = () => {
 
       <div style={{ textAlign: 'center', marginTop: '20px', color: '#666' }}>
         <small>
-          Auto-refreshes every 10 seconds • Data from blockchain: {process.env.CONTRACT_ADDRESS || 'Not deployed'}
+          Auto-refreshes every 10 seconds • Data from blockchain: {import.meta.env.VITE_CONTRACT_ADDRESS || 'Not deployed'}
         </small>
       </div>
     </div>

@@ -60,3 +60,6 @@ coverage
 #frontend
 /frontend/node_modules
 /frontend/package-lock.json
+
+backend/.env
+frontend/.env

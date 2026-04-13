@@ -31,7 +31,7 @@ const Vote = () => {
       
       // Check if contract address is valid
       if (!contract || contract.target === '0x0000000000000000000000000000000000000000') {
-        setError('Smart contract not deployed. Please deploy the contract first and update the contract address in .env.local file.');
+        setMessage({ type: 'error', text: 'Smart contract not deployed. Please deploy the contract first and update the contract address in .env.local file.' });
         setLoading(false);
         return;
       }

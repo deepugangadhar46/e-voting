@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import WebcamCapture from '../components/WebcamCapture';
 import axios from 'axios';
-
-const API_URL = 'http://localhost:5000';
+import { API_URL } from '../config';
 
 const Register = () => {
   const [formData, setFormData] = useState({

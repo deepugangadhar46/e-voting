@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Voter = require('../models/Voter');
+const FACE_MATCH_THRESHOLD = 0.6;
 
 // Calculate Euclidean distance between two face embeddings
 function calculateDistance(embedding1, embedding2) {
@@ -29,7 +30,7 @@ router.post('/', async (req, res) => {
       const allVoters = await Voter.find();
       let bestMatch = null;
       let bestDistance = Infinity;
-      const THRESHOLD = 0.6; // Euclidean distance threshold for face match
+      const THRESHOLD = FACE_MATCH_THRESHOLD; // Use constant for face match threshold
 
       for (const v of allVoters) {
         const distance = calculateDistance(faceEmbedding, v.faceEmbedding);
@@ -52,7 +53,7 @@ router.post('/', async (req, res) => {
     // If voterID was provided, verify the face matches
     if (voterID) {
       const distance = calculateDistance(faceEmbedding, voter.faceEmbedding);
-      const THRESHOLD = 0.6;
+      const THRESHOLD = FACE_MATCH_THRESHOLD;
       
       if (distance >= THRESHOLD) {
         return res.status(401).json({ 

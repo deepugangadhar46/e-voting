@@ -34,6 +34,9 @@ contract Voting {
     }
 
     function addCandidate(string memory _name) public onlyAdmin {
+        require(bytes(_name).length > 0, "Candidate name cannot be empty");
+        require(bytes(_name).length <= 100, "Name too long");
+        
         candidatesCount++;
         candidates[candidatesCount] = Candidate(candidatesCount, _name, 0);
         candidateIds.push(candidatesCount);
