@@ -3,26 +3,46 @@ import * as faceapi from 'face-api.js';
 
 const MODEL_URL = '/models';
 
+// State Enum for Liveness
+const LIVENESS_STATE = {
+  INITIALIZING: 'INITIALIZING',
+  NO_FACE: 'NO_FACE',
+  MULTIPLE_FACES: 'MULTIPLE_FACES',
+  LOOK_FORWARD: 'LOOK_FORWARD', // Establishing baseline
+  CHALLENGE: 'CHALLENGE', // Active challenge
+  PASSED: 'PASSED',
+  FAILED: 'FAILED'
+};
+
+const CHALLENGE_DIR = {
+  LEFT: 'LEFT',
+  RIGHT: 'RIGHT'
+};
+
+const CHALLENGE_TIMEOUT_MS = 15000; // 15 seconds
+
 const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [error, setError] = useState('');
-  const [faceDetected, setFaceDetected] = useState(false);
-  const [livenessPassed, setLivenessPassed] = useState(false);
-  const [blinkCount, setBlinkCount] = useState(0);
-  const [currentEAR, setCurrentEAR] = useState(0); // Debug: show current EAR value
-  const [isEyesClosed, setIsEyesClosed] = useState(false); // Debug: show eye state
-  const [captureLoading, setCaptureLoading] = useState(false); // Missing state!
+  const [captureLoading, setCaptureLoading] = useState(false);
   
-  // Liveness detection state
-  const blinkStartTime = useRef(null);
-  const lastBlinkTime = useRef(0);
-  const blinkDetectedRef = useRef(false);
-  const blinkStartTimeRef = useRef(0);
+  // Liveness states
+  const [livenessState, setLivenessState] = useState(LIVENESS_STATE.INITIALIZING);
+  const [challengeDir, setChallengeDir] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0);
+
+  const baselineRatioRef = useRef(null);
+  const challengeStartTimeRef = useRef(null);
+  const faceDetectedRef = useRef(false);
+
+  // Helper for distance
+  const distance = (p1, p2) => Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 
   // Load face-api models
   useEffect(() => {
+    let isMounted = true;
     const loadModels = async () => {
       try {
         await Promise.all([
@@ -30,14 +50,15 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
           faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
         ]);
-        setIsModelLoaded(true);
+        if (isMounted) setIsModelLoaded(true);
         console.log('Face-api models loaded');
       } catch (err) {
         console.error('Error loading models:', err);
-        setError('Failed to load face recognition models. Please refresh the page.');
+        if (isMounted) setError('Failed to load face recognition models.');
       }
     };
     loadModels();
+    return () => { isMounted = false; };
   }, []);
 
   // Start webcam
@@ -68,115 +89,139 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
     };
   }, [isModelLoaded]);
 
-  // Detect faces and liveness
+  // Handle retry
+  const handleRetry = () => {
+    setLivenessState(LIVENESS_STATE.INITIALIZING);
+    setChallengeDir(null);
+    baselineRatioRef.current = null;
+    challengeStartTimeRef.current = null;
+    setError('');
+  };
+
+  // Timer effect for challenge timeout
+  useEffect(() => {
+    if (livenessState === LIVENESS_STATE.CHALLENGE) {
+      const interval = setInterval(() => {
+        if (!challengeStartTimeRef.current) return;
+        const elapsed = Date.now() - challengeStartTimeRef.current;
+        const remaining = Math.max(0, CHALLENGE_TIMEOUT_MS - elapsed);
+        setTimeLeft(Math.ceil(remaining / 1000));
+        
+        if (remaining === 0) {
+          setLivenessState(LIVENESS_STATE.FAILED);
+          setError('Liveness challenge timed out. Please try again.');
+        }
+      }, 500);
+      return () => clearInterval(interval);
+    }
+  }, [livenessState]);
+
+  // Main detection loop
   const detectFace = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || !isModelLoaded) return;
+    
+    // Stop processing if passed or failed
+    if (livenessState === LIVENESS_STATE.PASSED || livenessState === LIVENESS_STATE.FAILED) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
+    // Use fast detection without descriptors for liveness loop
     const detections = await faceapi
       .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptors();
+      .withFaceLandmarks();
 
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (detections.length > 0) {
-      setFaceDetected(true);
-      
-      const detection = detections[0];
-      const landmarks = detection.landmarks;
+    if (detections.length === 0) {
+      faceDetectedRef.current = false;
+      if (livenessState !== LIVENESS_STATE.NO_FACE) {
+        setLivenessState(LIVENESS_STATE.NO_FACE);
+      }
+      return;
+    }
 
-      // Liveness detection: Blink detection
-      const leftEye = landmarks.getLeftEye();
-      const rightEye = landmarks.getRightEye();
-      
-      const leftEAR = calculateEyeAspectRatio(leftEye);
-      const rightEAR = calculateEyeAspectRatio(rightEye);
-      const avgEAR = (leftEAR + rightEAR) / 2;
+    if (detections.length > 1) {
+      faceDetectedRef.current = true;
+      if (livenessState !== LIVENESS_STATE.MULTIPLE_FACES) {
+        setLivenessState(LIVENESS_STATE.MULTIPLE_FACES);
+      }
+      return;
+    }
 
-      // Update debug state
-      setCurrentEAR(avgEAR.toFixed(3));
+    faceDetectedRef.current = true;
 
-      // EAR threshold for blink detection (0.20 is more sensitive than 0.25)
-      const EAR_THRESHOLD = 0.20;
-      const BLINK_COOLDOWN = 500; // ms between blinks (reduced from 1000)
-      const MIN_BLINK_FRAMES = 2; // Minimum frames eyes must be closed
-      const MAX_BLINK_FRAMES = 15; // Maximum frames for a valid blink
+    const detection = detections[0];
+    const landmarks = detection.landmarks;
 
-      const now = Date.now();
-      const eyesClosed = avgEAR < EAR_THRESHOLD;
-      setIsEyesClosed(eyesClosed);
+    // Draw face box and landmarks
+    faceapi.draw.drawDetections(canvas, detections);
+    faceapi.draw.drawFaceLandmarks(canvas, detections);
 
-      // State machine for blink detection
-      if (eyesClosed && !blinkDetectedRef.current) {
-        // Eyes just closed - start counting
-        blinkDetectedRef.current = true;
-        blinkStartTimeRef.current = now;
-      } else if (!eyesClosed && blinkDetectedRef.current) {
-        // Eyes just opened - check if it was a valid blink
-        const blinkDuration = now - blinkStartTimeRef.current;
-        const framesClosed = Math.round(blinkDuration / 50); // Approximate frames
-        
-        // Valid blink: between MIN_BLINK_FRAMES and MAX_BLINK_FRAMES
-        // and outside cooldown period
-        if (framesClosed >= MIN_BLINK_FRAMES && 
-            framesClosed <= MAX_BLINK_FRAMES && 
-            now - lastBlinkTime.current > BLINK_COOLDOWN) {
-          
-          setBlinkCount(prev => {
-            const newCount = prev + 1;
-            console.log(`Blink ${newCount} detected! EAR was ${avgEAR.toFixed(3)}`);
-            if (newCount >= 2) {
-              setLivenessPassed(true);
-              console.log('Liveness check PASSED!');
-            }
-            return newCount;
-          });
-          lastBlinkTime.current = now;
-        }
-        blinkDetectedRef.current = false;
+    // Calculate ratio
+    // We use the outer eye corners and nose tip for robust orientation
+    const leftEye = landmarks.getLeftEye()[0];
+    const rightEye = landmarks.getRightEye()[3];
+    const nose = landmarks.getNose()[3];
+    
+    const distLeft = distance(leftEye, nose);
+    const distRight = distance(rightEye, nose);
+    const ratio = distLeft / distRight;
+
+    // State machine logic
+    setLivenessState(prevState => {
+      // If we were recovering from no face or initializing, try to establish baseline
+      if (prevState === LIVENESS_STATE.INITIALIZING || prevState === LIVENESS_STATE.NO_FACE || prevState === LIVENESS_STATE.MULTIPLE_FACES) {
+        return LIVENESS_STATE.LOOK_FORWARD;
       }
 
-      // Draw face box and landmarks
-      faceapi.draw.drawDetections(canvas, detections);
-      faceapi.draw.drawFaceLandmarks(canvas, detections);
-    } else {
-      setFaceDetected(false);
-    }
-  }, [isModelLoaded]);
+      if (prevState === LIVENESS_STATE.LOOK_FORWARD) {
+        // Assume user is looking forward if ratio is roughly between 0.8 and 1.2
+        if (ratio > 0.8 && ratio < 1.2) {
+          baselineRatioRef.current = ratio;
+          
+          // Start challenge
+          const randomDir = Math.random() > 0.5 ? CHALLENGE_DIR.LEFT : CHALLENGE_DIR.RIGHT;
+          setChallengeDir(randomDir);
+          challengeStartTimeRef.current = Date.now();
+          return LIVENESS_STATE.CHALLENGE;
+        }
+      }
 
-  // Calculate Eye Aspect Ratio for blink detection
-  const calculateEyeAspectRatio = (eye) => {
-    const p2_p6 = distance(eye[1], eye[5]);
-    const p3_p5 = distance(eye[2], eye[4]);
-    const p1_p4 = distance(eye[0], eye[3]);
-    return (p2_p6 + p3_p5) / (2.0 * p1_p4);
-  };
+      if (prevState === LIVENESS_STATE.CHALLENGE) {
+        // Evaluate challenge
+        // Thresholds: to pass left, ratio must increase significantly. To pass right, ratio must decrease significantly.
+        // E.g., if asked to turn left, the distance to the right eye decreases (ratio increases > 1.4)
+        if (challengeDir === CHALLENGE_DIR.LEFT && ratio > 1.4) {
+          return LIVENESS_STATE.PASSED;
+        }
+        if (challengeDir === CHALLENGE_DIR.RIGHT && ratio < 0.6) {
+          return LIVENESS_STATE.PASSED;
+        }
+      }
 
-  const distance = (p1, p2) => {
-    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-  };
+      return prevState;
+    });
 
-  // Run detection loop
+  }, [isModelLoaded, livenessState, challengeDir]);
+
+  // Run detection interval
   useEffect(() => {
     if (!isModelLoaded) return;
-
-    const interval = setInterval(detectFace, 50); // 20 FPS for better blink detection
+    const interval = setInterval(detectFace, 100); // 10 FPS is enough for head movement
     return () => clearInterval(interval);
   }, [detectFace, isModelLoaded]);
 
   // Handle capture
   const handleCapture = async () => {
-    if (!faceDetected) {
+    if (!faceDetectedRef.current) {
       setError('No face detected. Please position your face in the frame.');
       return;
     }
 
-    if (mode === 'login' && !livenessPassed) {
-      setError('Liveness check failed. Please blink your eyes naturally 2 times.');
+    if (mode === 'login' && livenessState !== LIVENESS_STATE.PASSED) {
+      setError('Liveness check not passed.');
       return;
     }
 
@@ -184,6 +229,7 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
     setError('');
 
     try {
+      // Re-detect with descriptors for the final capture
       const video = videoRef.current;
       const detections = await faceapi
         .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
@@ -196,10 +242,7 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
         return;
       }
 
-      // Get face descriptor (128-dimensional array)
       const descriptor = detections[0].descriptor;
-      
-      // Convert Float32Array to regular array
       const faceEmbedding = Array.from(descriptor);
       
       onCapture(faceEmbedding);
@@ -212,6 +255,26 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
   };
 
   const loading = captureLoading || parentLoading;
+  
+  // Helpers for UI display
+  const getStatusText = () => {
+    if (!isModelLoaded) return 'Loading models...';
+    switch (livenessState) {
+      case LIVENESS_STATE.INITIALIZING: return 'Initializing...';
+      case LIVENESS_STATE.NO_FACE: return 'No face detected';
+      case LIVENESS_STATE.MULTIPLE_FACES: return 'Multiple faces detected! Please ensure only one face is visible.';
+      case LIVENESS_STATE.LOOK_FORWARD: return 'Please look straight forward...';
+      case LIVENESS_STATE.CHALLENGE: 
+        return challengeDir === CHALLENGE_DIR.LEFT 
+          ? `Turn your head slightly to your LEFT (${timeLeft}s)` 
+          : `Turn your head slightly to your RIGHT (${timeLeft}s)`;
+      case LIVENESS_STATE.PASSED: return 'Liveness Verified ✓';
+      case LIVENESS_STATE.FAILED: return 'Liveness Failed';
+      default: return 'Processing...';
+    }
+  };
+
+  const isPassed = livenessState === LIVENESS_STATE.PASSED || mode === 'register';
 
   return (
     <div className="webcam-capture">
@@ -234,36 +297,22 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
       </div>
 
       <div className="status-indicators">
-        <div className={`status ${faceDetected ? 'active' : ''}`}>
-          {faceDetected ? '✓ Face Detected' : '○ Looking for face...'}
+        <div className={`status ${livenessState === LIVENESS_STATE.PASSED ? 'active' : ''}`}>
+          {getStatusText()}
         </div>
-        
-        {mode === 'login' && (
-          <>
-            <div className={`status ${livenessPassed ? 'active' : ''}`}>
-              {livenessPassed 
-                ? '✓ Liveness Verified' 
-                : `○ Blink: ${blinkCount}/2 (EAR: ${currentEAR})`}
-            </div>
-            <div className={`status ${isEyesClosed ? 'active' : ''}`} style={{fontSize: '12px'}}>
-              {isEyesClosed ? '👁️ Eyes Closed' : '👁️ Eyes Open'}
-            </div>
-          </>
-        )}
       </div>
 
-      {mode === 'login' && !livenessPassed && (
-        <div style={{textAlign: 'center', marginTop: '10px', color: '#666', fontSize: '14px'}}>
-          <p><strong>💡 Tip:</strong> Blink naturally 2 times (not too fast, not too slow)</p>
-          <p>Wait 1 second between blinks</p>
-        </div>
+      {livenessState === LIVENESS_STATE.FAILED && (
+        <button type="button" onClick={handleRetry} className="btn-secondary" style={{ marginTop: '10px' }}>
+          Retry Liveness Challenge
+        </button>
       )}
 
       {error && <div className="error">{error}</div>}
 
       <button 
         onClick={handleCapture} 
-        disabled={loading || !faceDetected || (mode === 'login' && !livenessPassed)}
+        disabled={loading || !faceDetectedRef.current || (mode === 'login' && !isPassed)}
         className="btn-primary"
         style={{ marginTop: '16px' }}
       >
