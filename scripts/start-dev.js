@@ -145,25 +145,47 @@ function startHardhatNode() {
 function startBackendAndFrontend() {
   logSection('STEP 4: Starting Backend and Frontend');
   
-  const concurrentlyPath = path.join(__dirname, '..', 'node_modules', '.bin', 'concurrently');
+  const projectRoot = path.join(__dirname, '..');
+  const backendPath = path.join(projectRoot, 'backend');
+  const frontendPath = path.join(projectRoot, 'frontend');
   
-  const args = [
-    '--names', 'BACKEND,FRONTEND',
-    '--prefix-colors', 'bgBlue.bold,bgGreen.bold',
-    '--kill-others-on-fail',
-    '--restart-tries', '1',
-    'cd backend && npm run dev',
-    'cd frontend && npm run dev'
-  ];
+  log('Starting Backend and Frontend separately...', 'yellow');
   
-  const processes = spawn(concurrentlyPath, args, {
-    cwd: path.join(__dirname, '..'),
+  // Start backend
+  const backendProcess = spawn('npm', ['run', 'dev'], {
+    cwd: backendPath,
     stdio: 'inherit',
     shell: true,
     windowsHide: false
   });
   
-  return processes;
+  log('Backend starting...', 'blue');
+  
+  // Start frontend after a short delay
+  setTimeout(() => {
+    const frontendProcess = spawn('npm', ['run', 'dev'], {
+      cwd: frontendPath,
+      stdio: 'inherit',
+      shell: true,
+      windowsHide: false
+    });
+    
+    log('Frontend starting...', 'green');
+    
+    // Handle cleanup
+    const cleanup = () => {
+      log('\n\nShutting down services...', 'yellow');
+      backendProcess.kill('SIGTERM');
+      frontendProcess.kill('SIGTERM');
+      setTimeout(() => process.exit(0), 2000);
+    };
+    
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+    
+  }, 3000);
+  
+  return backendProcess;
 }
 
 // Main execution
