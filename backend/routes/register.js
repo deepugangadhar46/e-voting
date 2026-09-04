@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Voter = require('../models/Voter');
+const { calculateDistance } = require('../utils/faceUtils');
+
+const DUPLICATE_FACE_THRESHOLD = 0.45; // Stricter than verify threshold (0.6) to prevent false duplicate rejections
 
 // POST /register - Save voter with face embedding
 router.post('/', async (req, res) => {
@@ -34,6 +37,17 @@ router.post('/', async (req, res) => {
     const existingWallet = await Voter.findOne({ walletAddress });
     if (existingWallet) {
       return res.status(400).json({ error: 'Wallet address already registered' });
+    }
+
+    // Check for biometric duplicate
+    const allVoters = await Voter.find();
+    for (const v of allVoters) {
+      const distance = calculateDistance(faceEmbedding, v.faceEmbedding);
+      if (distance < DUPLICATE_FACE_THRESHOLD) {
+        return res.status(400).json({ 
+          error: 'A similar biometric identity is already registered.' 
+        });
+      }
     }
 
     // Create new voter

@@ -3,14 +3,7 @@ const router = express.Router();
 const Voter = require('../models/Voter');
 const FACE_MATCH_THRESHOLD = 0.6;
 
-// Calculate Euclidean distance between two face embeddings
-function calculateDistance(embedding1, embedding2) {
-  let sum = 0;
-  for (let i = 0; i < embedding1.length; i++) {
-    sum += Math.pow(embedding1[i] - embedding2[i], 2);
-  }
-  return Math.sqrt(sum);
-}
+const { calculateDistance } = require('../utils/faceUtils');
 
 // POST /verify - Compare live face against stored embedding
 router.post('/', async (req, res) => {

@@ -172,20 +172,20 @@ Open browser: `http://localhost:3000`
 
 1. **Registration**: User captures face → 128-dimension embedding extracted → Saved to MongoDB
 2. **Login**: User captures live face → Compared with stored embedding using Euclidean distance
-3. **Liveness Detection**: System requires 2 natural blinks to prevent photo spoofing
+3. **Liveness Detection**: System requires passing a randomized head movement challenge to prevent photo spoofing
 
-### Blink Detection Logic
+### Head Movement Liveness Logic
 
-The system uses **Eye Aspect Ratio (EAR)** to detect blinks:
+The system uses facial landmarks to ensure the user is live and responding to a random challenge:
 
-```
-EAR = (eye_height_1 + eye_height_2) / (2 × eye_width)
-```
+- **Baseline**: The system requires the user to face forward (ratio of distance between eyes and nose must be ~1.0).
+- **Challenge**: The user is randomly asked to turn their head `LEFT` or `RIGHT`.
+- **Detection**: 
+  - Turn Left: The left eye distance to nose ratio exceeds `1.4`.
+  - Turn Right: The ratio drops below `0.6`.
+- **Timeout**: The user must complete the challenge within 15 seconds.
 
-- **Normal eyes**: EAR ≈ 0.25-0.30
-- **Closed eyes**: EAR < 0.20
-- **Detection**: Eyes must close for 2-15 frames (100-750ms)
-- **Cooldown**: 800ms between blinks
+
 
 ### Blockchain Flow
 
@@ -264,9 +264,10 @@ event VotedEvent(uint256 indexed candidateId, address indexed voter);
 ## Security Features
 
 1. **Double-Vote Prevention**: Smart contract mapping tracks voters
-2. **Liveness Detection**: Basic blink-based verification to reduce photo spoofing risk
-3. **Blockchain Immutability**: Votes cannot be altered
-4. **Privacy**: Face embeddings stored, not photos
+2. **Liveness Detection**: Randomized active head movement challenge to prevent photo spoofing
+3. **Duplicate Registration Prevention**: Prevents registering similar biometric identities using strict distance thresholds.
+4. **Blockchain Immutability**: Votes cannot be altered
+5. **Privacy**: Face embeddings stored, not photos
 
 ## Architecture
 
@@ -292,7 +293,7 @@ event VotedEvent(uint256 indexed candidateId, address indexed voter);
 ## Limitations
 
 - **Face Recognition Accuracy**: Depends on lighting and camera quality
-- **Liveness Detection**: Basic blink-based system and can be improved with advanced anti-spoofing
+- **Liveness Detection**: Head movement challenge is an improvement over blinks, but advanced 3D anti-spoofing could further improve security.
 - **Scale**: Currently designed for small-scale elections (classroom, college level)
 - **Dependencies**: Requires internet connection and MetaMask browser extension
 - **Blockchain Costs**: Real deployment requires ETH for gas fees
@@ -300,8 +301,8 @@ event VotedEvent(uint256 indexed candidateId, address indexed voter);
 
 ## Demo Flow
 
-1. **Register**: Voter enters name, ID, connects MetaMask, captures face (2 blinks required)
-2. **Login**: Face verification with liveness detection
+1. **Register**: Voter enters name, ID, connects MetaMask, captures face
+2. **Login**: Face verification with randomized head movement liveness detection
 3. **Vote**: Select candidate and confirm with MetaMask transaction
 4. **Results**: View real-time vote counts from blockchain
 
@@ -316,7 +317,7 @@ npx hardhat test
 ### Manual Testing Checklist
 
 - [ ] Register voter with face capture
-- [ ] Login with face (blink 2 times)
+- [ ] Login with face (complete head movement challenge)
 - [ ] Try photo spoofing (should fail)
 - [ ] Cast vote on blockchain
 - [ ] Attempt double voting (should fail)
@@ -356,11 +357,11 @@ Update `frontend/.env.local` with the Sepolia contract address.
 - Run Hardhat node and deploy contract
 - Update `VITE_CONTRACT_ADDRESS` in `.env.local`
 
-### "Blink detection not working"
+### "Liveness detection failing / Timing out"
 - Ensure good lighting on face
-- Blink naturally (not too fast/slow)
-- Stay 1-2 feet from camera
-- Check EAR value displayed on screen (should be ~0.25 with eyes open)
+- Look straight at the camera to establish baseline first
+- Turn head slightly (~30 degrees) in the instructed direction
+- Make sure only one face is visible in the frame
 
 ### "MetaMask not connecting"
 - Add Hardhat Local network to MetaMask
