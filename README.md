@@ -290,6 +290,29 @@ event VotedEvent(uint256 indexed candidateId, address indexed voter);
                         └─────────────────┘
 ```
 
+## Development Testing
+
+During development, you may need to reset the system to repeatedly test registration, face verification, and voting logic.
+
+### 1. Resetting MongoDB Data
+To clear all test voters and their face embeddings from the local database, run from the root directory:
+```bash
+npm run reset:test
+```
+*Note: This command includes safety checks and will abort if it detects a production environment.*
+
+### 2. Resetting Blockchain State
+**Important:** Running `npm run reset:test` ONLY clears the database, not the blockchain. Because blockchain transactions are immutable, you cannot simply "delete" votes. Instead, you must spin up a completely fresh local blockchain.
+
+To completely reset the test environment (including blockchain votes):
+1. Stop your currently running development server (Press `Ctrl+C` in the terminal where you ran `npm run dev:windows`).
+2. Start it again with `npm run dev:windows`.
+
+This will:
+- Launch a fresh, empty local blockchain.
+- Automatically re-deploy the `Voting` smart contract to a new address.
+- Automatically sync the new contract address to the frontend's `.env.local`.
+
 ## Limitations
 
 - **Face Recognition Accuracy**: Depends on lighting and camera quality
