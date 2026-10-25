@@ -183,6 +183,23 @@ export const getContract = async (needsSigner = false) => {
 };
 
 /**
+ * Get read-only contract instance using a standard JSON-RPC provider.
+ * Does not require MetaMask or any browser wallet extension.
+ * Reads RPC endpoint from import.meta.env.VITE_RPC_URL with fallback to http://127.0.0.1:8545.
+ * @returns {ethers.Contract}
+ */
+export const getReadOnlyContract = () => {
+  const rpcUrl = import.meta.env.VITE_RPC_URL || 'http://127.0.0.1:8545';
+
+  if (!CONTRACT_ADDRESS || CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
+    throw new Error('Voting smart contract address is not configured. Please deploy the contract and update VITE_CONTRACT_ADDRESS.');
+  }
+
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+};
+
+/**
  * Get connected MetaMask account
  * @returns {Promise<string|null>}
  */

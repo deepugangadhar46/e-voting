@@ -136,6 +136,7 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
 
     if (detections.length === 0) {
       faceDetectedRef.current = false;
+      baselineRatioRef.current = null;
       if (livenessState !== LIVENESS_STATE.NO_FACE) {
         setLivenessState(LIVENESS_STATE.NO_FACE);
       }
@@ -144,6 +145,7 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
 
     if (detections.length > 1) {
       faceDetectedRef.current = true;
+      baselineRatioRef.current = null;
       if (livenessState !== LIVENESS_STATE.MULTIPLE_FACES) {
         setLivenessState(LIVENESS_STATE.MULTIPLE_FACES);
       }
@@ -190,13 +192,20 @@ const WebcamCapture = ({ onCapture, mode = 'register', loading: parentLoading })
       }
 
       if (prevState === LIVENESS_STATE.CHALLENGE) {
-        // Evaluate challenge
-        // Thresholds: to pass left, ratio must increase significantly. To pass right, ratio must decrease significantly.
-        // E.g., if asked to turn left, the distance to the right eye decreases (ratio increases > 1.4)
-        if (challengeDir === CHALLENGE_DIR.LEFT && ratio > 1.4) {
+        const baseline = baselineRatioRef.current;
+        
+        // Safety guard: do not evaluate challenge if baseline is unset or invalid
+        if (typeof baseline !== 'number' || isNaN(baseline) || baseline <= 0) {
+          return prevState;
+        }
+
+        // Relative baseline comparison:
+        // Turning head to user's LEFT shifts nose toward image right, increasing ratio (ratio > baseline * 1.35)
+        // Turning head to user's RIGHT shifts nose toward image left, decreasing ratio (ratio < baseline * 0.65)
+        if (challengeDir === CHALLENGE_DIR.LEFT && ratio > baseline * 1.35) {
           return LIVENESS_STATE.PASSED;
         }
-        if (challengeDir === CHALLENGE_DIR.RIGHT && ratio < 0.6) {
+        if (challengeDir === CHALLENGE_DIR.RIGHT && ratio < baseline * 0.65) {
           return LIVENESS_STATE.PASSED;
         }
       }

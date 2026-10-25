@@ -1,11 +1,50 @@
 const express = require('express');
 const router = express.Router();
 const Voter = require('../models/Voter');
+const jwt = require('jsonwebtoken');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 const FACE_MATCH_THRESHOLD = 0.6;
 
 const { calculateDistance } = require('../utils/faceUtils');
 
-// POST /verify - Compare live face against stored embedding
+// GET /verify/session - Protected endpoint: derives voter identity from verified JWT
+router.get('/session', requireAuth, async (req, res) => {
+  try {
+    const voter = await Voter.findById(req.user.id).select('-faceEmbedding');
+    if (!voter) {
+      return res.status(404).json({ error: 'Voter not found or account removed.' });
+    }
+
+    res.json({
+      authenticated: true,
+      voter: {
+        id: voter._id,
+        name: voter.name,
+        voterID: voter.voterID,
+        walletAddress: voter.walletAddress,
+        role: voter.role
+      }
+    });
+  } catch (error) {
+    console.error('Session retrieval error:', error);
+    res.status(500).json({ error: 'Server error retrieving voter session.' });
+  }
+});
+
+// GET /verify/admin-check - Protected admin endpoint: requires valid JWT with ADMIN role
+router.get('/admin-check', requireAuth, requireAdmin, async (req, res) => {
+  res.json({
+    admin: true,
+    user: {
+      id: req.user.id,
+      voterID: req.user.voterID,
+      walletAddress: req.user.walletAddress,
+      role: req.user.role
+    }
+  });
+});
+
+// POST /verify - Public endpoint: compare live face against stored embedding and issue JWT
 router.post('/', async (req, res) => {
   try {
     const { faceEmbedding, voterID } = req.body;
@@ -23,7 +62,7 @@ router.post('/', async (req, res) => {
       const allVoters = await Voter.find();
       let bestMatch = null;
       let bestDistance = Infinity;
-      const THRESHOLD = FACE_MATCH_THRESHOLD; // Use constant for face match threshold
+      const THRESHOLD = FACE_MATCH_THRESHOLD;
 
       for (const v of allVoters) {
         const distance = calculateDistance(faceEmbedding, v.faceEmbedding);
@@ -56,12 +95,35 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Authenticated role and identity are strictly derived from the verified voter record.
+    // Wallet address string matching does not confer admin privileges without verified provisioning.
+
+    // Sign JWT Token
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      console.error('CRITICAL: JWT_SECRET environment variable is missing.');
+      return res.status(500).json({ error: 'Internal server configuration error.' });
+    }
+
+    const token = jwt.sign(
+      { 
+        id: voter._id,
+        voterID: voter.voterID, 
+        walletAddress: voter.walletAddress,
+        role: voter.role 
+      },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     res.json({
       match: true,
+      token,
       voter: {
         name: voter.name,
         voterID: voter.voterID,
-        walletAddress: voter.walletAddress
+        walletAddress: voter.walletAddress,
+        role: voter.role
       }
     });
 

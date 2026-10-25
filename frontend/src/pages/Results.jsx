@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getContract } from '../utils/contract';
+import { getReadOnlyContract } from '../utils/contract';
 
 const Results = () => {
   const [candidates, setCandidates] = useState([]);
@@ -16,7 +16,7 @@ const Results = () => {
 
   const loadResults = async () => {
     try {
-      const contract = await getContract();
+      const contract = getReadOnlyContract();
       const candidatesList = await contract.getCandidates();
       
       let total = 0;
@@ -35,10 +35,19 @@ const Results = () => {
       
       setCandidates(formatted);
       setTotalVotes(total);
+      setError('');
       setLoading(false);
-    } catch (error) {
-      console.error('Error loading results:', error);
-      setError('Failed to load results from blockchain');
+    } catch (err) {
+      console.error('Error loading results:', err);
+      let errMsg = 'Failed to load results from blockchain.';
+      if (err.message && err.message.includes('not configured')) {
+        errMsg = err.message;
+      } else if (err.code === 'BAD_DATA' || err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT' || err.message?.includes('could not detect network') || err.message?.includes('failed to fetch')) {
+        errMsg = 'Could not connect to blockchain node. Please verify that your RPC node (http://127.0.0.1:8545 or VITE_RPC_URL) is running and reachable.';
+      } else {
+        errMsg = `Blockchain read error: ${err.shortMessage || err.message || 'Unknown error'}`;
+      }
+      setError(errMsg);
       setLoading(false);
     }
   };
@@ -61,7 +70,10 @@ const Results = () => {
     return (
       <div className="results-page">
         <h2>Election Results</h2>
-        <div className="error">{error}</div>
+        <div className="error" style={{ marginBottom: '16px' }}>{error}</div>
+        <button onClick={() => { setLoading(true); setError(''); loadResults(); }} className="btn-primary">
+          Retry Loading
+        </button>
       </div>
     );
   }

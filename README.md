@@ -7,7 +7,7 @@ A secure, transparent, and tamper-proof voting system built on Ethereum blockcha
 - **Biometric Authentication**: Face recognition with liveness detection (reduces photo spoofing risk)
 - **Blockchain Security**: Votes recorded permanently on Ethereum blockchain
 - **Double-Vote Prevention**: Smart contract enforces one vote per wallet
-- **Transparency**: Real-time results visible to anyone
+- **Transparency**: Real-time results visible to anyone without requiring MetaMask
 - **Privacy**: Face data stored as numerical embeddings instead of raw images
 
 ## Tech Stack
@@ -15,7 +15,7 @@ A secure, transparent, and tamper-proof voting system built on Ethereum blockcha
 | Layer | Technology |
 |-------|------------|
 | Frontend | React.js, Vite, face-api.js |
-| Backend | Node.js, Express, MongoDB |
+| Backend | Node.js, Express, MongoDB, JWT |
 | Blockchain | Solidity, Hardhat, Ethers.js |
 | Authentication | Face recognition + MetaMask |
 
@@ -32,6 +32,7 @@ blockchain-voting/
 │   └── voting.test.js  # Unit tests
 ├── backend/            # Node.js API server
 │   ├── index.js        # Server entry
+│   ├── middleware/     # Auth & role verification middleware
 │   ├── models/         # MongoDB schemas
 │   └── routes/         # API endpoints
 ├── frontend/           # React application
@@ -64,11 +65,14 @@ PRIVATE_KEY=your_wallet_private_key_here
 ```env
 MONGODB_URI=mongodb://localhost:27017/voting-system
 PORT=5000
+JWT_SECRET=your_jwt_secret_random_64_characters
+ADMIN_WALLET_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 ```
 
 ### Frontend `.env.local`
 ```env
 VITE_CONTRACT_ADDRESS=0xYourDeployedContractAddress
+VITE_RPC_URL=http://127.0.0.1:8545
 ```
 
 **⚠️ SECURITY WARNING**: Never commit `.env` files to Git. They are already in `.gitignore`.
@@ -78,17 +82,14 @@ VITE_CONTRACT_ADDRESS=0xYourDeployedContractAddress
 ### 1. Install Dependencies
 
 ```bash
-# Install root dependencies
-cd blockchain-voting
-npm install
+# Run root setup to install all dependencies at once:
+npm run setup
 
-# Install backend dependencies
-cd backend
+# Or install manually in each folder:
 npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
+cd backend && npm install
+cd ../frontend && npm install
+cd ..
 ```
 
 ### 2. Download Face-API Models
@@ -111,7 +112,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/justadudewhohacks/face
 
 ### 3. Start MongoDB
 
-Make sure MongoDB is running locally, or update `backend/.env` with your MongoDB Atlas URI.
+Make sure MongoDB is running locally (`net start MongoDB` on Windows), or update `backend/.env` with your MongoDB Atlas URI.
 
 ### 4. Deploy Smart Contract (Local)
 
@@ -127,14 +128,15 @@ cd blockchain-voting
 npx hardhat run scripts/deploy-local.js --network localhost
 ```
 
-Copy the contract address from the output.
+Copy the contract address from the output and update `frontend/.env.local`.
 
 ### 5. Update Frontend Config
 
-Update `frontend/.env.local` with the contract address:
+Update `frontend/.env.local` with the deployed contract address:
 
 ```env
 VITE_CONTRACT_ADDRESS=0xYourContractAddressHere
+VITE_RPC_URL=http://127.0.0.1:8545
 ```
 
 ### 6. Start All Services
@@ -151,6 +153,11 @@ cd blockchain-voting/frontend
 npm run dev
 ```
 
+> **Tip (Windows shortcut)**: Alternatively, you can start Hardhat, deploy the contract, and launch both backend and frontend in one command:
+> ```powershell
+> npm run dev:windows
+> ```
+
 ### 7. Configure MetaMask
 
 1. Open MetaMask → Settings → Networks → Add Network
@@ -160,7 +167,7 @@ npm run dev
    - **Chain ID**: 31337
    - **Currency Symbol**: ETH
 
-3. Import a test account from Hardhat node (check the terminal for private keys)
+3. Import a test account from Hardhat node (Account #0 is the Admin: check terminal for private key).
 
 ### 8. Access the Application
 
@@ -178,70 +185,37 @@ Open browser: `http://localhost:3000`
 
 The system uses facial landmarks to ensure the user is live and responding to a random challenge:
 
-- **Baseline**: The system requires the user to face forward (ratio of distance between eyes and nose must be ~1.0).
+- **Baseline**: The user looks straight at the camera to establish their baseline eye-to-nose ratio.
 - **Challenge**: The user is randomly asked to turn their head `LEFT` or `RIGHT`.
 - **Detection**: 
-  - Turn Left: The left eye distance to nose ratio exceeds `1.4`.
-  - Turn Right: The ratio drops below `0.6`.
+  - Turn Left: Ratio increases relative to baseline (`ratio > baseline * 1.35`).
+  - Turn Right: Ratio decreases relative to baseline (`ratio < baseline * 0.65`).
 - **Timeout**: The user must complete the challenge within 15 seconds.
-
-
 
 ### Blockchain Flow
 
-1. **Registration**: Voter connects MetaMask → Face verified → Data stored
-2. **Voting**: Smart contract checks if voter already voted → Records vote → Emits event
-3. **Results**: Anyone can query vote counts directly from blockchain
+1. **Registration**: Voter registers details and face embedding.
+2. **Voting**: Authenticated voter connects MetaMask → Smart contract verifies voter has not voted → Records vote → Emits event.
+3. **Results**: Anyone can query live vote counts directly from blockchain via a read-only provider (no MetaMask required).
 
 ## Pages
 
 | Page | URL | Description |
 |------|-----|-------------|
-| Register | `/` | Voter registration with face capture |
+| Register | `/` or `/register` | Voter registration with face capture |
 | Login | `/login` | Face verification with liveness detection |
-| Vote | `/vote` | Cast vote (requires login) |
-| Results | `/results` | Live vote counts from blockchain |
+| Vote | `/vote` | Cast vote (requires login & MetaMask) |
+| Results | `/results` | Live vote counts from blockchain (no MetaMask needed) |
 | Admin | `/admin` | Add candidates (admin only) |
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/register` | Register new voter |
-| POST | `/verify` | Verify face and return voter info |
-| GET | `/health` | Server health check |
-
-### Request/Response Examples
-
-**Register:**
-```json
-POST /register
-{
-  "name": "John Doe",
-  "voterID": "VOTER123",
-  "walletAddress": "0x...",
-  "faceEmbedding": [0.23, 0.45, ...]  // 128 numbers
-}
-```
-
-**Verify:**
-```json
-POST /verify
-{
-  "faceEmbedding": [0.23, 0.45, ...],
-  "voterID": "VOTER123"  // optional
-}
-
-Response:
-{
-  "match": true,
-  "voter": {
-    "name": "John Doe",
-    "voterID": "VOTER123",
-    "walletAddress": "0x..."
-  }
-}
-```
+| Method | Endpoint | Description | Access |
+|--------|----------|-------------|--------|
+| POST | `/register` | Register new voter | Public |
+| POST | `/verify` | Verify face and return JWT session | Public |
+| GET | `/verify/session` | Get authenticated voter profile | Protected (JWT) |
+| GET | `/health` | Server health check | Public |
 
 ## Smart Contract
 
@@ -263,32 +237,12 @@ event VotedEvent(uint256 indexed candidateId, address indexed voter);
 
 ## Security Features
 
-1. **Double-Vote Prevention**: Smart contract mapping tracks voters
-2. **Liveness Detection**: Randomized active head movement challenge to prevent photo spoofing
+1. **Double-Vote Prevention**: Smart contract mapping tracks voters on-chain.
+2. **Liveness Detection**: Randomized active head movement challenge to prevent photo spoofing.
 3. **Duplicate Registration Prevention**: Prevents registering similar biometric identities using strict distance thresholds.
-4. **Blockchain Immutability**: Votes cannot be altered
-5. **Privacy**: Face embeddings stored, not photos
-
-## Architecture
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Frontend      │────▶│    Backend      │────▶│    MongoDB      │
-│  (React + Vite) │     │ (Express +      │     │  (Face + User   │
-│                 │     │   face-api.js)  │     │      Data)      │
-└────────┬────────┘     └─────────────────┘     └─────────────────┘
-         │
-         │              ┌─────────────────┐
-         └─────────────▶│  Smart Contract │
-            (Ethers.js) │   (Voting.sol)  │
-                        │                 │
-                        └────────┬────────┘
-                                 │
-                        ┌────────▼────────┐
-                        │  Local Hardhat  │
-                        │   / Sepolia     │
-                        └─────────────────┘
-```
+4. **JWT Authentication**: Protected routes verify signed JWT sessions with role-based access.
+5. **Blockchain Immutability**: Votes cannot be altered once cast.
+6. **Privacy**: Numerical face embeddings stored instead of raw photos.
 
 ## Development Testing
 
@@ -316,15 +270,14 @@ This will:
 ## Limitations
 
 - **Face Recognition Accuracy**: Depends on lighting and camera quality
-- **Liveness Detection**: Head movement challenge is an improvement over blinks, but advanced 3D anti-spoofing could further improve security.
+- **Liveness Detection**: Head movement challenge is an improvement over blinks; real-world environments require good lighting.
 - **Scale**: Currently designed for small-scale elections (classroom, college level)
-- **Dependencies**: Requires internet connection and MetaMask browser extension
-- **Blockchain Costs**: Real deployment requires ETH for gas fees
+- **Dependencies**: Voting requires internet connection and MetaMask browser extension; viewing results does not.
 - **Hardware Requirements**: Webcam needed for face capture
 
 ## Demo Flow
 
-1. **Register**: Voter enters name, ID, connects MetaMask, captures face
+1. **Register**: Voter enters name, ID, wallet address, captures face
 2. **Login**: Face verification with randomized head movement liveness detection
 3. **Vote**: Select candidate and confirm with MetaMask transaction
 4. **Results**: View real-time vote counts from blockchain
@@ -344,7 +297,7 @@ npx hardhat test
 - [ ] Try photo spoofing (should fail)
 - [ ] Cast vote on blockchain
 - [ ] Attempt double voting (should fail)
-- [ ] View results in real-time
+- [ ] View results in real-time without MetaMask
 
 ## Deployment to Sepolia Testnet
 
@@ -379,6 +332,11 @@ Update `frontend/.env.local` with the Sepolia contract address.
 ### "Smart contract not deployed"
 - Run Hardhat node and deploy contract
 - Update `VITE_CONTRACT_ADDRESS` in `.env.local`
+
+### "Results not loading from blockchain"
+- Confirm Hardhat node is running on port 8545
+- Verify `VITE_CONTRACT_ADDRESS` is set in `frontend/.env.local`
+- If testing on mobile, set `VITE_RPC_URL` to your computer's LAN IP instead of `127.0.0.1`
 
 ### "Liveness detection failing / Timing out"
 - Ensure good lighting on face

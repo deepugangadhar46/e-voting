@@ -2,10 +2,22 @@ const express = require('express');
 const router = express.Router();
 const Voter = require('../models/Voter');
 const { calculateDistance } = require('../utils/faceUtils');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const DUPLICATE_FACE_THRESHOLD = 0.45; // Stricter than verify threshold (0.6) to prevent false duplicate rejections
 
-// POST /register - Save voter with face embedding
+// GET /register/voters - Protected endpoint for admins to view registered voters list (excluding biometrics)
+router.get('/voters', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const voters = await Voter.find().select('name voterID walletAddress role registeredAt');
+    res.json({ success: true, count: voters.length, voters });
+  } catch (error) {
+    console.error('Error fetching registered voters:', error);
+    res.status(500).json({ error: 'Server error retrieving registered voters' });
+  }
+});
+
+// POST /register - Public endpoint: Save voter with face embedding
 router.post('/', async (req, res) => {
   try {
     const { name, voterID, walletAddress, faceEmbedding } = req.body;
@@ -50,12 +62,27 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Admin Privilege Protection:
+    // Disallow claiming the designated administrator wallet via public voter registration.
+    // Knowledge of the public address does not constitute proof of ownership.
+    const adminWallet = (process.env.ADMIN_WALLET_ADDRESS || '').trim().toLowerCase();
+    if (adminWallet && walletAddress.trim().toLowerCase() === adminWallet) {
+      return res.status(403).json({ 
+        error: 'Cannot register with the designated administrator wallet address via public voter registration. Administrator accounts must be provisioned securely.' 
+      });
+    }
+
+    // Public registration always assigns the VOTER role.
+    // Client-submitted role field is strictly ignored to prevent privilege escalation.
+    const role = 'VOTER';
+
     // Create new voter
     const voter = new Voter({
-      name,
-      voterID,
-      walletAddress,
-      faceEmbedding
+      name: name.trim(),
+      voterID: voterID.trim(),
+      walletAddress: walletAddress.trim(),
+      faceEmbedding,
+      role
     });
 
     await voter.save();
@@ -66,7 +93,8 @@ router.post('/', async (req, res) => {
       voter: {
         name: voter.name,
         voterID: voter.voterID,
-        walletAddress: voter.walletAddress
+        walletAddress: voter.walletAddress,
+        role: voter.role
       }
     });
 
